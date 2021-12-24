@@ -1,0 +1,16 @@
+Var(z) = ((b-d)E(A))^2 + (b-d)^2Var(A) + Var(zn)
+A approx pi - ((r + R)/(2rR) + 1/2)d
+Var(A) approx (1/2)^2*Var(d) + (1/(2R))^2*Var(d) + (1/(2r))^2*Var(d)
+Var(d) approx Var(cx) + Var(cy)
+
+COV(z, cx) = E(zcx) - E(cx)E(z)
+
+z = d + (b - d)A
+
+E(zcx) = d + (b - d)E(Acx)
+E(Acx) = pi*cx - (1/2R)dcx - (1/2r)dcx - 1/2dcx
+d approx cx + cy
+E(Acx) = pi*cx - (1/2R + 1/2r + 1/2)(E(cx^2) + E(cy))
+E(Acx) = pi*cx - (1/2R + 1/2r + 1/2)(Var(X) + cx^2 + cy)
+
+E(z)E(cx)
