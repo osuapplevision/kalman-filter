@@ -1,5 +1,6 @@
 
 from typing import Tuple
+import itertools
 import numpy as np
 from numpy.core.fromnumeric import clip
 
@@ -30,16 +31,23 @@ class ConeSensorModel:
         self.stddev = stddev
         self.rng = rng
 
+    def calc_per_apple_in_fov(self, x, y, z) -> float:
+        '''calculate the percantage of the FOV which contains apple'''
+        fov_at_apple_rad = z*np.tan(ConeSensorModel.FOV_RAD/2)
+        try:
+            area_apple_in_fov = area_of_intersecting_circles(
+                self.apple_rad, fov_at_apple_rad, np.sqrt(x**2 + y**2))
+        except ValueError:
+            return 0
+        return clip(area_apple_in_fov/(np.pi * fov_at_apple_rad**2), 0, 1)
+
     def measure(self, apple_pos: Vector3, meas_pos: Tuple[Vector2, Vector2], est_apple_pos: Vector3) -> Tuple[Vector3, np.ndarray]:
         rx, ry, rz = apple_pos
         ex, ey, ez = est_apple_pos
         (mx, my), (varx, vary) = meas_pos
 
         # calculate the percantage of the FOV which contains apple
-        fov_at_apple_rad = rz*np.tan(ConeSensorModel.FOV_RAD/2)
-        area_apple_in_fov = area_of_intersecting_circles(
-            self.apple_rad, fov_at_apple_rad, np.sqrt(rx**2 + ry**2))
-        per_apple_in_fov = clip(area_apple_in_fov/(np.pi * fov_at_apple_rad**2), 0, 1)
+        per_apple_in_fov = self.calc_per_apple_in_fov(rx, ry, rz)
 
         # print(f'Apple fov: {per_apple_in_fov*100:.2f}%')
         # > 80% means the apple is basically correct
@@ -52,38 +60,45 @@ class ConeSensorModel:
             temp_z = rz + (self.backdrop_dist - rz)*(1 - per_apple_in_fov)
             mz = temp_z + self.rng.normal(0, self.stddev)
         
+        # determine if the apple is likely to be >80% of the FOV (we'll use 1.5sigma)
+        STD_RANGE = 1.5
+        x_err = np.sqrt(varx)*STD_RANGE
+        minmax_x = (mx + x_err, mx - x_err, mx)
+        y_err = np.sqrt(vary)*STD_RANGE
+        minmax_y = (my + y_err, my - y_err, my)
+        z_err = self.stddev*1.5
+        all_pos_per_apple_in_fov = [self.calc_per_apple_in_fov(x, y, mz + z_err) for x, y in itertools.product(minmax_x, minmax_y)]
+        
         # compute predicted varience
-        expected_fov_at_apple_rad = ez*np.tan(ConeSensorModel.FOV_RAD/2)
-        mes_area_apple_in_fov = area_of_intersecting_circles(
-            self.apple_rad, expected_fov_at_apple_rad, np.sqrt(mx**2 + my**2))
-        mes_per_apple_in_fov = clip(mes_area_apple_in_fov / (np.pi * expected_fov_at_apple_rad**2), 0, 1)
-        # print(f'Measured apple fov: {mes_per_apple_in_fov*100:.2f}%')
-
-        if mes_per_apple_in_fov >= .95:
-            var = np.array([
-                [varx, 0, 0],
-                [0, vary, 0],
-                [0, 0, self.stddev**2 + (self.apple_rad/2)**2]
-            ])
+        if min(all_pos_per_apple_in_fov) < .7:
+            # this measurement is unlikely to be accurate, therefore our variance is maximum
+            varz = self.backdrop_dist**2
+            covzcx = 0
+            covzcy = 0
         else:
-            expected_area_apple_in_fov = area_of_intersecting_circles(
-                self.apple_rad, expected_fov_at_apple_rad, np.sqrt(ex**2 + ey**2))
-            expected_per_apple_in_fov = clip(expected_area_apple_in_fov/(np.pi*expected_fov_at_apple_rad**2), 0, 1)
+            mes_per_apple_in_fov = self.calc_per_apple_in_fov(mx, my, ez)
+            if mes_per_apple_in_fov >= .95:
+                varz = self.stddev**2 + (self.apple_rad/2)**2
+                covzcx = 0
+                covzcy = 0
+            else:
+                expected_fov_at_apple_rad = ez*np.tan(ConeSensorModel.FOV_RAD/2)
+                expected_per_apple_in_fov = self.calc_per_apple_in_fov(ex, ey, ez)
 
-            d_var_est = varx + vary
-            a_var_est = (1/4 + (1/(2*self.apple_rad))**2 + (1/(2*expected_fov_at_apple_rad))**2)*d_var_est
-            varz = ((self.backdrop_dist - ez)*(1 - expected_per_apple_in_fov))**2 + max((self.backdrop_dist - mz)**2*a_var_est**2, 0)
-            
-            eacx = np.pi*ex - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(varx + ex**2 + ey)
-            covzcx = (self.backdrop_dist - ez)*eacx
-            eacy = np.pi*ey - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(vary + ex + ey**2)
-            covzcy = (self.backdrop_dist - ez)*eacy
-
-            var = np.array([
-                [varx,   0,      covzcx],
-                [0,      vary,   covzcy],
-                [covzcx, covzcy, varz]
-            ])
+                d_var_est = varx + vary
+                a_var_est = (1/4 + (1/(2*self.apple_rad))**2 + (1/(2*expected_fov_at_apple_rad))**2)*d_var_est
+                varz = ((self.backdrop_dist - ez)*(1 - expected_per_apple_in_fov))**2 + max((self.backdrop_dist - mz)**2*a_var_est**2, 0)
+                
+                eacx = np.pi*ex - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(varx + ex**2 + ey)
+                covzcx = (self.backdrop_dist - ez)*eacx
+                eacy = np.pi*ey - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(vary + ex + ey**2)
+                covzcy = (self.backdrop_dist - ez)*eacy
+    
+        var = np.array([
+            [varx, 0, 0,],
+            [0, vary, covzcy],
+            [0, covzcx, varz]
+        ])
         return (mx, my, mz), np.maximum(var, 0)
 
 
@@ -106,19 +121,28 @@ class AppleModel:
         self.cur_time = 0
         self.camera = camera
         self.sensor = sensor
+        self._last_velocity = np.array((0, 0, 0))
 
-    def step(self, last_est_pos: Vector3) -> Tuple[Vector3, np.ndarray]:
+    def step(self, last_est_pos: Vector3) -> Tuple[Tuple[Vector3, np.ndarray], np.ndarray]:
+        delta_t = self.delta_t_ms/1000
         if self.cur_time != 0:
             # move the robot towards the apple at a fixed speed
-            self.pos_real = self.pos_real + (self.pos_real / np.linalg.norm(self.pos_real)) * -self.speed * self.delta_t_ms / 1000
+            new_velocity = (self.pos_real / np.linalg.norm(self.pos_real)) * -self.speed
+            self.pos_real = self.pos_real + new_velocity*delta_t
+        else:
+            new_velocity = np.array((0, 0, 0))
+
+        # compute control vector
+        new_accel = (new_velocity - self._last_velocity)/delta_t
+        control = np.transpose(np.array([new_velocity[0], new_accel[0], new_velocity[1], new_accel[1], new_velocity[2], new_accel[2]]))
+        self._last_velocity = new_velocity
+
+        # step time
         self.cur_time += self.delta_t_ms / 1000
 
         # take a measurement
         cam = self.camera.measure(self.pos_real)
-        return self.sensor.measure(self.pos_real, cam, last_est_pos)
-
-    def get_control_vector(self) -> np.ndarray:
-        return np.transpose(np.array([0, 0, 0, 0, -self.speed, 0]))
+        return self.sensor.measure(self.pos_real, cam, last_est_pos), control
 
 if __name__ == '__main__':
     np.seterr(all='raise')

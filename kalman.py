@@ -87,22 +87,21 @@ if __name__ == '__main__':
     Q = get_process_noise(delta_t, accel_var)
     H = get_observation_matrix()
     I = np.eye(H.shape[1], H.shape[1])
-    ITERATIONS = 40
+    ITERATIONS = 80
 
     meas_log = []
     est_log = []
     real_log = []
     time_log = []
 
-    x_est = get_starting_position((0, 0, 0.6))
+    x_est = get_starting_position((0, 0, 1))
     p_est = get_starting_uncertainty(0.4)
 
     rng = np.random.default_rng()
     model = AppleModel((0, 0, 0.8), 2, delta_t_ms, NormalCameraModel(0.01, rng), ConeSensorModel(1.2, 0.08, 0.005, rng))
 
     for _ in range(ITERATIONS):
-        control = model.get_control_vector()
-        meas, var = model.step(x_est)
+        (meas, var), control = model.step(x_est)
         
         x_predict = F @ x_est + G @ control
         p_predict = F @ p_est @ np.transpose(F) + Q
