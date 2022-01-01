@@ -75,16 +75,16 @@ class ConeSensorModel:
             varz = ((self.backdrop_dist - ez)*(1 - expected_per_apple_in_fov))**2 + max((self.backdrop_dist - mz)**2*a_var_est**2, 0)
             
             eacx = np.pi*ex - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(varx + ex**2 + ey)
-            covzcx = max((self.backdrop_dist - ez)*eacx, 0)
+            covzcx = (self.backdrop_dist - ez)*eacx
             eacy = np.pi*ey - (1/2 + 1/(2*self.apple_rad) + 1/(2*expected_fov_at_apple_rad))*(vary + ex + ey**2)
-            covzcy = max((self.backdrop_dist - ez)*eacy, 0)
+            covzcy = (self.backdrop_dist - ez)*eacy
 
             var = np.array([
                 [varx,   0,      covzcx],
                 [0,      vary,   covzcy],
                 [covzcx, covzcy, varz]
             ])
-        return (mx, my, mz), var
+        return (mx, my, mz), np.maximum(var, 0)
 
 
 class NormalCameraModel:
@@ -107,7 +107,7 @@ class AppleModel:
         self.camera = camera
         self.sensor = sensor
 
-    def step(self) -> Tuple[Vector3, np.ndarray]:
+    def step(self, last_est_pos: Vector3) -> Tuple[Vector3, np.ndarray]:
         if self.cur_time != 0:
             # move the robot towards the apple at a fixed speed
             self.pos_real = self.pos_real + (self.pos_real / np.linalg.norm(self.pos_real)) * -self.speed * self.delta_t_ms / 1000
@@ -115,13 +115,10 @@ class AppleModel:
 
         # take a measurement
         cam = self.camera.measure(self.pos_real)
-        return self.sensor.measure(self.pos_real, cam, self.pos_real)
+        return self.sensor.measure(self.pos_real, cam, last_est_pos)
 
     def get_control_vector(self) -> np.ndarray:
-        if self.cur_time == 0:
-            return np.transpose(np.array([0, 0, 0, 0, -self.speed, 0])) # todo: why /2?
-        else:
-            return np.transpose(np.array([0, 0, 0, 0, 0, 0]))
+        return np.transpose(np.array([0, 0, 0, 0, -self.speed, 0]))
 
 if __name__ == '__main__':
     np.seterr(all='raise')
