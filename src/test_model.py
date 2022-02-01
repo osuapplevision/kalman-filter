@@ -25,17 +25,17 @@ if __name__ == '__main__':
 
     env = EnvProperties(delta_t_ms=33,
                         accel_std=0,
-                        starting_position=(0, 0, 1),
-                        starting_std=0.4,
-                        z_std=0.005,
-                        backdrop_dist_m=0.5,
-                        apple_r_m=.08,
+                        starting_position=(0, 0, 1000),
+                        starting_std=400,
+                        z_std=5,
+                        backdrop_dist_mm=500,
+                        apple_r_mm=80,
                         dist_fov_rad=np.deg2rad(25))
     kal_filter = KalmanFilter(env, 1.5, 0.75, 0.9)
 
     rng = np.random.default_rng()
-    model = AppleModel((0, 0, 0.8), 0.5, env.delta_t_ms, NormalCameraModel(0.01, rng),
-                       ConeSensorModel(0.5, 0.08, 0.005, rng))
+    model = AppleModel((0, 0, 800), 500, env.delta_t_ms, NormalCameraModel(0.01, rng),
+                       ConeSensorModel(500, 80, 5, rng))
 
     meas_log = []
     est_log = []

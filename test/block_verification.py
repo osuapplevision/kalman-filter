@@ -14,24 +14,41 @@ import applevision_kalman_run
 @patch('applevision_kalman_run.rospy')
 def test_block_io(mock_rospy):
     with TemporaryDirectory() as dir:
+        # setup the mock distance sensor (pubs to topic appl_dist)
         mock_pub = Mock()
         mock_sub = Mock()
         mock_rospy.Publisher.return_value = mock_pub
         mock_rospy.Subscriber.return_value = mock_sub
+
+        # setup the mock computer vision (writes coordinates to a file)
         coordpath = Path(dir).joinpath('coords.txt')
         coordpath.write_text('0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0')
+
+        # setup the kalman filter module
         applevision_kalman_run.main(coordpath)
+        assert mock_rospy.Subscriber.call_args[0][0] \
+            == 'appl_dist'  # verify subscribe topic
         invoke_handler = mock_rospy.Subscriber.call_args[0][2]
 
-        # test publish
+        # invoke the kalman filter by fake publishing
         data = Mock()
-        data.data = 0
+        data.data = 1000
         invoke_handler(data)
 
-        # test that the output was published
+        # test that the output was published to the output topic
         mock_pub.publish.assert_called_once_with(data=[
-            0.0, 0.0, 0.5417184839230509, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.08667495742768817
+            0.0,
+            0.0,
+            1000.0,  # x, y, z (mm)
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            97560.97601475925  # varience
         ])
 
 
@@ -44,20 +61,25 @@ def test_block_througput(mock_rospy):
         applevision_kalman_run.main(coordpath)
         invoke_handler = mock_rospy.Subscriber.call_args[0][2]
 
-        # test publish
         data = Mock()
-        data.data = 1
+        data.data = 100
 
+        # fake publish COUNT times
         start = time.time()
         for _ in range(COUNT):
             invoke_handler(data)
         end = time.time()
-        ops_sec = COUNT / (end - start)
 
+        # calculate throughput
+        ops_sec = COUNT / (end - start)
         print(f'{ops_sec:.2f} ops/sec')
 
+        # ensure we can operate >30Hz
         assert ops_sec > 30
 
 
 if __name__ == '__main__':
+    test_block_io()
     test_block_througput()
+
+    print('All tests passed!')

@@ -19,12 +19,12 @@ def main(path_to_coords: Path):
     rospy.init_node('listener', anonymous=True)
 
     env = EnvProperties(delta_t_ms=33,
-                        accel_std=0.1,
-                        starting_position=(0, 0, 1),
-                        starting_std=0.4,
-                        z_std=0.005,
-                        backdrop_dist_m=0.5,
-                        apple_r_m=.08,
+                        accel_std=1,
+                        starting_position=(0, 0, 1000),
+                        starting_std=400,
+                        z_std=5,
+                        backdrop_dist_mm=500,
+                        apple_r_mm=80,
                         dist_fov_rad=np.deg2rad(25))
     kal_filter = KalmanFilter(env, 1.5, 0.75, 0.9)
 
@@ -41,8 +41,6 @@ def main(path_to_coords: Path):
         p.publish(data=send)
 
     s = rospy.Subscriber('appl_dist', UInt16, handle_invoke)
-
-    print('Started!')
 
     rospy.spin()
 
